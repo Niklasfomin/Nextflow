@@ -17,6 +17,9 @@
 
 package nextflow.k8s.model
 
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -95,6 +98,8 @@ class PodSpecBuilder {
     boolean privileged
 
     int activeDeadlineSeconds
+    
+    String scheduler
 
     /**
      * @return A sequential volume unique identifier
@@ -251,6 +256,11 @@ class PodSpecBuilder {
     PodSpecBuilder withActiveDeadline(int seconds) {
         this.activeDeadlineSeconds = seconds
         return this
+	}
+        
+    PodSpecBuilder withScheduler( String scheduler ) {
+        this.scheduler = scheduler
+        return this
     }
 
     PodSpecBuilder withPodOptions(PodOptions opts) {
@@ -315,7 +325,6 @@ class PodSpecBuilder {
     Map build() {
         assert this.podName, 'Missing K8s podName parameter'
         assert this.imageName, 'Missing K8s imageName parameter'
-        assert this.command || this.args, 'Missing K8s command parameter'
 
         final restart = this.restart ?: 'Never'
 
@@ -335,9 +344,13 @@ class PodSpecBuilder {
         if( this.memory )
             res.memory = this.memory
 
-        final container = [ name: this.podName, image: this.imageName ]
+        final Map<String, Object> container = [
+                name: this.podName,
+                image: this.imageName
+        ] as Map<String, Object>
+
         if( this.command )
-            container.command = this.command
+            container.put('command', this.command)
         if( this.args )
             container.args = args
 
@@ -413,6 +426,11 @@ class PodSpecBuilder {
         // add gpu settings
         if( accelerator ) {
             container.resources = addAcceleratorResources(accelerator, container.resources as Map)
+        }
+
+        //scheduler
+        if( scheduler ){
+            spec.schedulerName = scheduler
         }
 
         // add storage definitions ie. volumes and mounts

@@ -26,11 +26,15 @@ import nextflow.exception.AbortOperationException
 import nextflow.k8s.client.ClientConfig
 import nextflow.k8s.client.K8sClient
 import nextflow.k8s.client.K8sResponseException
+import nextflow.k8s.model.PodHostMount
+import nextflow.k8s.model.PodNodeSelector
 import nextflow.k8s.model.PodOptions
 import nextflow.k8s.model.PodSecurityContext
 import nextflow.k8s.model.PodVolumeClaim
 import nextflow.k8s.model.ResourceType
 import nextflow.util.Duration
+import nextflow.processor.TaskRun
+import java.nio.file.Path
 
 /**
  * Model Kubernetes specific settings defined in the nextflow
@@ -95,6 +99,11 @@ class K8sConfig implements Map<String,Object> {
     K8sDebug getDebug() {
         new K8sDebug( (Map<String,Object>)get('debug') )
     }
+
+    K8sScheduler getScheduler(){
+        target.scheduler ? new K8sScheduler( (Map<String,Object>)target.scheduler ) : null
+    }
+
 
     boolean getCleanup(boolean defValue=true) {
         target.cleanup == null ? defValue : Boolean.valueOf( target.cleanup as String )
@@ -267,7 +276,6 @@ class K8sConfig implements Map<String,Object> {
         if( !findVolumeClaimByPath(getProjectDir()) )
             throw new AbortOperationException("Kubernetes `projectDir` must be a path mounted as a persistent volume -- projectDir=$projectDir; volumes=${getClaimPaths().join(', ')}")
 
-
     }
 
     @CompileStatic
@@ -282,5 +290,54 @@ class K8sConfig implements Map<String,Object> {
 
         boolean getYaml() { Boolean.valueOf( target.yaml as String ) }
     }
+
+    @CompileStatic
+    static class K8sScheduler {
+
+        @Delegate
+        Map<String,Object> target
+
+        K8sScheduler(Map<String,Object> scheduler) {
+            this.target = scheduler
+        }
+
+        String getName() { target.name as String ?: 'workflow-scheduler' }
+
+        String getStrategy() { target.strategy as String ?: 'FIFO' }
+
+        String getServiceAccount() { target.serviceAccount as String }
+
+        String getImagePullPolicy() { target.imagePullPolicy as String }
+
+        Integer getCPUs() { target.cpu as Integer ?: 1 }
+
+        String getMemory() { target.memory as String ?: "1400Mi" }
+
+        String getContainer() { target.container as String }
+
+        String getCommand() { target.command as String }
+
+        Integer getPort() { target.port as Integer ?: 8080 }
+
+        String getWorkDir() { target.workDir as String }
+
+        Integer runAsUser() { target.runAsUser as Integer }
+
+        Boolean autoClose() { target.autoClose == null ? true : target.autoClose as Boolean }
+
+        String getCostFunction() { target.costFunction as String }
+
+        PodNodeSelector getNodeSelector(){
+            return target.nodeSelector ? new PodNodeSelector( target.nodeSelector ) : null
+        }
+
+        int getBatchSize() {
+            String s = target.batchSize as String
+            //Default: 1 -> No batching
+            s ? Integer.valueOf(s) : 1
+        }
+
+    }
+
 }
 

@@ -64,6 +64,11 @@ class TaskPollingMonitor implements TaskMonitor {
      */
     final String name
 
+    /**
+     * Object to batch the task submission to achieve a better scheduling plan
+     */
+    private final SchedulerBatch schedulerBatch
+
 
     /**
      * A lock object used to signal the completion of a task execution
@@ -137,17 +142,19 @@ class TaskPollingMonitor implements TaskMonitor {
 
         this.pendingQueue = new LinkedBlockingQueue<TaskHandler>()
         this.runningQueue = new LinkedBlockingQueue<TaskHandler>()
+        
+        this.schedulerBatch = params.schedulerBatch as SchedulerBatch
     }
 
-    static TaskPollingMonitor create( Session session, String name, int defQueueSize, Duration defPollInterval ) {
+    static TaskPollingMonitor create( Session session, String name, int defQueueSize, Duration defPollInterval, SchedulerBatch schedulerBatch = null ) {
         assert session
         assert name
         final capacity = session.getQueueSize(name, defQueueSize)
         final pollInterval = session.getPollInterval(name, defPollInterval)
         final dumpInterval = session.getMonitorDumpInterval(name)
 
-        log.debug "Creating task monitor for executor '$name' > capacity: $capacity; pollInterval: $pollInterval; dumpInterval: $dumpInterval "
-        new TaskPollingMonitor(name: name, session: session, capacity: capacity, pollInterval: pollInterval, dumpInterval: dumpInterval)
+        log.debug "Creating task monitor for executor '$name' > capacity: $capacity; pollInterval: $pollInterval; dumpInterval: $dumpInterval; schedulerBatch: $schedulerBatch"
+        new TaskPollingMonitor(name: name, session: session, capacity: capacity, pollInterval: pollInterval, dumpInterval: dumpInterval, schedulerBatch: schedulerBatch )
     }
 
     static TaskPollingMonitor create( Session session, String name, Duration defPollInterval ) {
@@ -550,6 +557,7 @@ class TaskPollingMonitor implements TaskMonitor {
 
         int count = 0
         def itr = pendingQueue.iterator()
+        schedulerBatch?.startBatch()
         while( itr.hasNext() && session.isSuccess() ) {
             final handler = itr.next()
             submitRateLimit?.acquire()
@@ -557,6 +565,7 @@ class TaskPollingMonitor implements TaskMonitor {
                 if( !canSubmit(handler) )
                     continue
 
+                schedulerBatch?.startSubmit()
                 count++
                 handler.incProcessForks()
                 submit(handler)
@@ -569,6 +578,7 @@ class TaskPollingMonitor implements TaskMonitor {
             // when `canSubmit` return false the handler should be retained to be tried in a following iteration
             itr.remove()
         }
+        schedulerBatch?.endBatch()
 
         return count
     }

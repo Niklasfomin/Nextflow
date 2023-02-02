@@ -209,6 +209,17 @@ abstract class TaskHandler {
             catch( IOException e ) {
                 log.debug "[WARN] Cannot read trace file: $file -- Cause: ${e.message}"
             }
+
+            file = task.workDir?.resolve(TaskRun.CMD_TRACE_SCHEDULER)
+            try {
+                if(file) record.parseSchedulerTraceFile(file)
+            }
+            catch( NoSuchFileException e ) {
+                // ignore it
+            }
+            catch( IOException e ) {
+                log.debug "[WARN] Cannot read scheduler trace file: $file -- Cause: ${e.message}"
+            }
         }
 
         return record

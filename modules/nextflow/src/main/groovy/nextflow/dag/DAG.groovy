@@ -27,7 +27,9 @@ import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
 import groovyx.gpars.dataflow.expression.DataflowExpression
 import groovyx.gpars.dataflow.operator.DataflowProcessor
+import nextflow.Global
 import nextflow.NF
+import nextflow.Session
 import nextflow.extension.CH
 import nextflow.extension.DataflowHelper
 import nextflow.processor.TaskProcessor
@@ -40,6 +42,9 @@ import nextflow.script.params.OutParam
 import nextflow.script.params.OutputsList
 import nextflow.script.params.TupleInParam
 import nextflow.script.params.TupleOutParam
+
+import java.util.concurrent.atomic.AtomicLong
+
 /**
  * Model a direct acyclic graph of the pipeline execution.
  *
@@ -81,11 +86,18 @@ class DAG {
         dataflowBroadcastLookup.put(readChannel, broadcastChannel)
     }
 
-    @PackageScope
     List<Vertex> getVertices() { vertices }
 
-    @PackageScope
     List<Edge> getEdges() { edges }
+
+    private List<Vertex> processedVertices = new ArrayList<>(50)
+
+    private void informDagChange( Vertex vertex ){
+        processedVertices << vertex
+        (Global.session as Session)?.executorFactory?.callExecutors({it.informDagChange(processedVertices)})
+    }
+
+    List<Vertex> getProcessedVertices(){ processedVertices }
 
     boolean isEmpty() { edges.size()==0 && vertices.size()==0 }
 
@@ -148,6 +160,9 @@ class DAG {
         for( ChannelHandler channel : outbounds ) {
             outbound( vertex, channel )
         }
+
+        informDagChange( vertex )
+
     }
 
     /**
@@ -195,6 +210,7 @@ class DAG {
                 int p = vertices.indexOf(edge.to)
                 if(p!=-1) vertices.add(p,edge.from)
                 else vertices.add(edge.from)
+                informDagChange( edge.from )
             }
             def fork = new Edge(channel: entering.channel, from: edge.from, to: vertex, label: entering.label)
             edges << fork
@@ -300,12 +316,14 @@ class DAG {
                 def vertex = e.from = new Vertex(Type.ORIGIN)
                 int p = vertices.indexOf( e.to )
                 vertices.add( p, vertex )
+                informDagChange( vertex )
             }
             else if( !e.to ) {
                 // creates the missing termination vertex
                 def vertex = e.to = new Vertex(Type.NODE)
                 int p = vertices.indexOf( e.from )
                 vertices.add( p+1, vertex )
+                informDagChange( vertex )
             }
         }
     }
@@ -380,6 +398,8 @@ class DAG {
     @PackageScope
     class Vertex {
 
+        static private AtomicLong nextID = new AtomicLong();
+
         /**
          * The vertex label
          */
@@ -398,7 +418,12 @@ class DAG {
         TaskProcessor process
 
         /**
-         * Create a DAG vertex instance
+         * unique Id for life, as ordering might change
+         */
+        final long id = nextID.getAndIncrement()
+
+        /**
+         * Create an DGA vertex instance
          *
          * @param type A {@link Type} value
          * @param label A descriptive string to label this vertex
@@ -436,6 +461,13 @@ class DAG {
     @ToString(includeNames = true, includes = 'label,from,to', includePackage=false)
     @MapConstructor
     class Edge {
+
+        static private AtomicLong nextID = new AtomicLong();
+
+        /**
+         * unique Id for life, as ordering might change
+         */
+        final long id = nextID.getAndIncrement()
 
         /**
          * The Dataflow channel that originated this graph edge

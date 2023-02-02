@@ -19,9 +19,12 @@ package nextflow.k8s
 
 
 import groovy.transform.CompileStatic
+import groovy.util.logging.Slf4j
 import nextflow.executor.BashWrapperBuilder
+import nextflow.file.FileHelper
 import nextflow.processor.TaskRun
 import nextflow.util.Escape
+import java.nio.file.Path
 
 /**
  * Implements a BASH wrapper for tasks executed by kubernetes cluster
@@ -29,6 +32,7 @@ import nextflow.util.Escape
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @CompileStatic
+@Slf4j
 class K8sWrapperBuilder extends BashWrapperBuilder {
 
     K8sWrapperBuilder(TaskRun task) {

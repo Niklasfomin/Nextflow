@@ -136,7 +136,7 @@ class BashWrapperBuilder {
     }
 
     protected boolean shouldUnstageOutputs() {
-        return targetDir && workDir!=targetDir
+        return (targetDir && workDir!=targetDir)
     }
 
     protected boolean fixOwnership() {
@@ -273,7 +273,7 @@ class BashWrapperBuilder {
         binding.unstage_controls = changeDir || shouldUnstageOutputs() ? getUnstageControls() : null
 
         if( changeDir || shouldUnstageOutputs() ) {
-            binding.unstage_outputs = copyStrategy.getUnstageOutputFilesScript(outputFiles,targetDir)
+            binding.unstage_outputs = copyStrategy.getUnstageOutputFilesScript(outputFiles, targetDir)
         }
         else {
             binding.unstage_outputs = null

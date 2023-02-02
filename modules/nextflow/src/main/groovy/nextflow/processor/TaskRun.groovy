@@ -528,6 +528,7 @@ class TaskRun implements Cloneable {
     static final public String CMD_START = '.command.begin'
     static final public String CMD_RUN = '.command.run'
     static final public String CMD_TRACE = '.command.trace'
+    static final public String CMD_TRACE_SCHEDULER = '.command.scheduler.trace'
     static final public String CMD_ENV = '.command.env'
 
 

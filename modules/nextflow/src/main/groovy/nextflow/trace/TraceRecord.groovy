@@ -61,47 +61,68 @@ class TraceRecord implements Serializable {
     final public static List<String> NON_PRIMITIVE_TYPES = ['date','time','perc','mem']
 
     final public static Map<String,String> FIELDS = [
-            task_id:    'str',
-            hash:       'str',
-            native_id:  'str',
-            process:    'str',
-            module:     'str',
-            container:  'str',
-            tag:        'str',
-            name:       'str',
-            status:     'str',
-            exit:       'str',
-            submit:     'date',
-            start:      'date',
-            complete:   'date',
-            duration:   'time',
-            realtime:   'time',
-            '%cpu':     'perc',     // -- ps field '%cpu'
-            '%mem':     'perc',     // -- ps field '%mem'
-            rss:        'mem',      // -- ps field 'rss'
-            vmem:       'mem',      // -- ps field 'vsize'
-            peak_rss:   'mem',      // -- /proc/$pid/status field 'VmHWM'  (Peak resident set size i.e. high water mark)
-            peak_vmem:  'mem',      // -- /proc/$pid/status field 'VmPeak' (Peak virtual memory size)
-            rchar:      'mem',      // -- /proc/$pid/io
-            wchar:      'mem',      // -- /proc/$pid/io
-            syscr:      'num',      // -- /proc/$pid/io
-            syscw:      'num',      // -- /proc/$pid/io
-            read_bytes: 'mem',      // -- /proc/$pid/io
-            write_bytes:'mem',      // -- /proc/$pid/io
-            attempt:    'num',
-            workdir:    'str',
-            script:     'str',
-            scratch:    'str',
-            queue:      'str',
-            cpus:       'num',
-            memory:     'mem',
-            disk:       'mem',
-            time:       'time',
-            env:        'str',
-            error_action:'str',
-            vol_ctxt: 'num',
-            inv_ctxt: 'num',
-            hostname: 'str'
+            task_id:                               'str',
+            hash:                                  'str',
+            native_id:                             'str',
+            process:                               'str',
+            module:                                'str',
+            container:                             'str',
+            tag:                                   'str',
+            name:                                  'str',
+            status:                                'str',
+            exit:                                  'str',
+            submit:                                'date',
+            start:                                 'date',
+            complete:                              'date',
+            duration:                              'time',
+            realtime:                              'time',
+            '%cpu':                                'perc',     // -- ps field '%cpu'
+            '%mem':                                'perc',     // -- ps field '%mem'
+            rss:                                   'mem',      // -- ps field 'rss'
+            vmem:                                  'mem',      // -- ps field 'vsize'
+            peak_rss:                              'mem',      // -- /proc/$pid/status field 'VmHWM'  (Peak resident set size i.e. high water mark)
+            peak_vmem:                             'mem',      // -- /proc/$pid/status field 'VmPeak' (Peak virtual memory size)
+            rchar:                                 'mem',      // -- /proc/$pid/io
+            wchar:                                 'mem',      // -- /proc/$pid/io
+            syscr:                                 'num',      // -- /proc/$pid/io
+            syscw:                                 'num',      // -- /proc/$pid/io
+            read_bytes:                            'mem',      // -- /proc/$pid/io
+            write_bytes:                           'mem',      // -- /proc/$pid/io
+            attempt:                               'num',
+            workdir:                               'str',
+            script:                                'str',
+            scratch:                               'str',
+            queue:                                 'str',
+            cpus:                                  'num',
+            memory:                                'mem',
+            disk:                                  'mem',
+            time:                                  'time',
+            env:                                   'str',
+            error_action:                          'str',
+            vol_ctxt:                              'num',
+            inv_ctxt:                              'num',
+            hostname:                              'str',
+            infiles_time:                          'num',
+            create_bash_wrapper_time:              'num',
+            create_request_time:                   'num',
+            submit_to_scheduler_time:              'num',
+            submit_to_k8s_time:                    'num',
+            scheduler_depending_task:              'num',
+            scheduler_time_in_queue:               'num',
+            scheduler_place_in_queue:              'num',
+            scheduler_tried_to_schedule:           'num',
+            scheduler_time_to_schedule:            'num',
+            scheduler_nodes_tried:                 'num',
+            scheduler_nodes_cost:                  'str',
+            scheduler_could_stop_fetching:         'num',
+            scheduler_best_cost:                   'num',
+            scheduler_delta_schedule_submitted:    'num',
+            scheduler_delta_schedule_alignment:    'num',
+            scheduler_batch_id:                    'num',
+            scheduler_delta_batch_start_submitted: 'num',
+            scheduler_delta_batch_start_received:  'num',
+            scheduler_delta_batch_closed_batch_end:'num',
+            scheduler_delta_submitted_batch_end:   'num',
     ]
 
     static public Map<String,Closure<String>> FORMATTER = [
@@ -460,6 +481,40 @@ class TraceRecord implements Serializable {
         return this
     }
 
+    TraceRecord parseSchedulerTraceFile( Path file ) {
+
+        final text = file.text
+
+        final lines = text.readLines()
+        if( !lines )
+            return this
+        if( lines[0] != 'nextflow.scheduler.trace/v1' )
+            throw new IllegalStateException("Cannot parse scheduler trace file in version: ${lines[0]}")
+
+        for( int i=0; i<lines.size(); i++ ) {
+            final pair = lines[i].tokenize('=')
+            final name = pair[0]
+            final value = pair[1]
+            if( value == null )
+                continue
+            switch( name ) {
+                case "scheduler_nodes_cost" :
+                case "scheduler_init_throughput":
+                    this.put( name, value )
+                    break
+                case "scheduler_best_cost" :
+                    def val = parseDouble( value, file, name )
+                    this.put( name, val )
+                    break
+                default:
+                    def val = parseLong(value, file, name)
+                    this.put(name, val)
+            }
+        }
+
+        return this
+    }
+
     private TraceRecord parseLegacy( Path file, List<String> lines) {
         String[] header = null
         for( int count=0; count<lines.size(); count++ ) {
@@ -526,6 +581,16 @@ class TraceRecord implements Serializable {
         }
         catch( NumberFormatException e ) {
             log.debug "[WARN] Not a valid long number `$str` -- offending row: $row in file `$file`"
+            return 0
+        }
+    }
+
+    private long parseDouble( String str, Path file , String row )  {
+        try {
+            str.toDouble()
+        }
+        catch( NumberFormatException e ) {
+            log.debug "[WARN] Not a valid double number `$str` -- offending row: $row in file `$file`"
             return 0
         }
     }

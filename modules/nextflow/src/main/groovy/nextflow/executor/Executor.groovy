@@ -17,6 +17,8 @@
 
 package nextflow.executor
 
+import nextflow.dag.DAG
+
 import java.nio.file.Path
 
 import groovy.transform.Memoized
@@ -181,4 +183,6 @@ abstract class Executor {
      * Allow graceful termination of executor resources
      */
     void shutdown() { }
+
+    void informDagChange( List<DAG.Vertex> processedVertices ) {}
 }

@@ -21,9 +21,12 @@ import groovy.transform.CompileStatic
 import groovy.transform.Memoized
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
+import nextflow.dag.DAG
 import nextflow.executor.Executor
 import nextflow.executor.fusion.FusionHelper
 import nextflow.k8s.client.K8sClient
+import nextflow.k8s.client.K8sSchedulerClient
+import nextflow.k8s.model.PodOptions
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskMonitor
 import nextflow.processor.TaskPollingMonitor
@@ -45,8 +48,20 @@ class K8sExecutor extends Executor {
      */
     private K8sClient client
 
+    private static K8sSchedulerClient schedulerClient
+
+    static getK8sSchedulerClient(){
+        schedulerClient
+    }
+
+    private K8sSchedulerBatch schedulerBatch = null
+
     @PackageScope K8sClient getClient() {
         client
+    }
+
+    @PackageScope K8sSchedulerClient getSchedulerClient() {
+        schedulerClient
     }
 
     /**
@@ -68,6 +83,36 @@ class K8sExecutor extends Executor {
         final clientConfig = k8sConfig.getClient()
         this.client = new K8sClient(clientConfig)
         log.debug "[K8s] config=$k8sConfig; API client config=$clientConfig"
+
+        final K8sConfig.K8sScheduler schedulerConfig = k8sConfig.getScheduler()
+
+        if( schedulerConfig ) {
+            schedulerClient = new K8sSchedulerClient(schedulerConfig, k8sConfig.getNamespace(), session.runName, client,
+                    k8sConfig.getPodOptions().getVolumeClaims())
+            this.schedulerBatch?.setSchedulerClient( schedulerClient )
+            final PodOptions podOptions = k8sConfig.getPodOptions()
+            Boolean traceEnabled = session.config.navigate('trace.enabled') as Boolean
+            Map data = [
+                    volumeClaims : podOptions.volumeClaims,
+                    traceEnabled : traceEnabled,
+                    costFunction : schedulerConfig.getCostFunction(),
+            ]
+
+            schedulerClient.registerScheduler( data )
+        }
+
+    }
+
+    @Override
+    void shutdown() {
+        final K8sConfig.K8sScheduler schedulerConfig = k8sConfig.getScheduler()
+        if( schedulerConfig ) {
+            try{
+                schedulerClient.closeScheduler()
+            } catch (Exception e){
+                log.error( "Error while closing scheduler", e)
+            }
+        }
     }
 
     /**
@@ -82,7 +127,10 @@ class K8sExecutor extends Executor {
      */
     @Override
     protected TaskMonitor createTaskMonitor() {
-        TaskPollingMonitor.create(session, name, 100, Duration.of('5 sec'))
+        if ( k8sConfig.getScheduler()?.getBatchSize() > 1 ) {
+            this.schedulerBatch = new K8sSchedulerBatch( k8sConfig.getScheduler().getBatchSize() )
+        }
+        TaskPollingMonitor.create(session, name, 100, Duration.of('5 sec'), this.schedulerBatch )
     }
 
     /**
@@ -103,4 +151,9 @@ class K8sExecutor extends Executor {
     boolean isFusionEnabled() {
         return FusionHelper.isFusionEnabled(session)
     }
+    
+    void informDagChange( List<DAG.Vertex> processedVertices ) {
+        schedulerClient?.informDagChange( processedVertices )
+    }
+
 }

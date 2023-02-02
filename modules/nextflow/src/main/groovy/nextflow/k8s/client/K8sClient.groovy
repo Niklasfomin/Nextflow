@@ -141,7 +141,7 @@ class K8sClient {
      * @param spec
      * @return
      */
-    K8sResponseJson podCreate(String req) {
+    K8sResponseJson podCreate(String req, namespace = config.namespace) {
         assert req
         final action = "/api/v1/namespaces/$config.namespace/pods"
         final resp = post(action, req)
@@ -149,7 +149,7 @@ class K8sClient {
         return new K8sResponseJson(resp.text)
     }
 
-    K8sResponseJson podCreate(Map req, Path saveYamlPath=null) {
+    K8sResponseJson podCreate(Map req, Path saveYamlPath=null, namespace = config.namespace) {
 
         if( saveYamlPath ) try {
             saveYamlPath.text = new Yaml().dump(req).toString()
@@ -158,7 +158,7 @@ class K8sClient {
             log.debug "WARN: unable to save request yaml -- cause: ${e.message ?: e}"
         }
 
-        podCreate(JsonOutput.toJson(req))
+        podCreate(JsonOutput.toJson(req), namespace)
     }
 
     /**
@@ -350,6 +350,13 @@ class K8sClient {
         assert podName
         final K8sResponseJson resp = podStatus0(podName)
         (resp?.spec as Map)?.nodeName as String
+	}
+
+    String podIP( String podName ){
+        assert podName
+        final resp = podStatus(podName)
+        return (resp?.status as Map)?.podIP
+
     }
 
     /**
@@ -667,7 +674,7 @@ class K8sClient {
         final isError = code >= 400
         final stream = isError ? conn.getErrorStream() : conn.getInputStream()
         if( isError )
-            throw new K8sResponseException("Request $method $path returned an error code=$code", stream)
+            throw new K8sResponseException("Request $method $path returned an error code=$code", stream, code)
         return new K8sResponseApi(code, stream)
     }
 

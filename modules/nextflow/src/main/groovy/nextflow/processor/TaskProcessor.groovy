@@ -726,7 +726,7 @@ class TaskProcessor {
 
     /**
      * Try to check if exists a previously executed process result in the a cached folder. If it exists
-     * use the that result and skip the process execution, otherwise the task is sumitted for execution.
+     * use the that result and skip the process execution, otherwise the task is submitted for execution.
      *
      * @param task
      *      The {@code TaskRun} instance to be executed

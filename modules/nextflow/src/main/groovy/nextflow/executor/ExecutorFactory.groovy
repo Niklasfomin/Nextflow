@@ -28,6 +28,9 @@ import nextflow.script.ProcessConfig
 import nextflow.script.ScriptType
 import nextflow.util.ServiceName
 import org.pf4j.PluginManager
+
+import java.util.function.Consumer
+
 /**
  * Helper class to create {@link Executor} objects
  *
@@ -244,6 +247,15 @@ class ExecutorFactory {
         }
         catch( Exception e ) {
             log.warn "Unable to gracefully shutdown executor: $exec.name", e
+        }
+    }
+
+    void callExecutors( Consumer<Executor> function ){
+        for( Executor exec : executors.values() ) try {
+            function.accept( exec )
+        }
+        catch( Exception e ) {
+            log.warn "Unable to call executor: $exec.name", e
         }
     }
     
